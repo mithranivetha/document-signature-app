@@ -8,18 +8,68 @@ import 'react-pdf/dist/Page/TextLayer.css'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
+const CURSIVE_FONTS = [
+  { name: 'Dancing Script', url: 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap' },
+  { name: 'Great Vibes', url: 'https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap' },
+  { name: 'Pacifico', url: 'https://fonts.googleapis.com/css2?family=Pacifico&display=swap' },
+]
+
 export default function SignDocument() {
   const { id } = useParams()
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const [doc, setDoc] = useState(null)
   const [numPages, setNumPages] = useState(null)
   const [signatures, setSignatures] = useState([])
+  const [showModal, setShowModal] = useState(false)
+  const [modalTab, setModalTab] = useState('draw')
+  const [typedName, setTypedName] = useState('')
+  const [selectedFont, setSelectedFont] = useState('Dancing Script')
   const [placing, setPlacing] = useState(false)
+  const [pendingSig, setPendingSig] = useState(null)
   const containerRef = useRef(null)
+  const sigCanvasRef = useRef(null)
+  const isDrawing = useRef(false)
+
+  const startDraw = (e) => {
+    isDrawing.current = true
+    const ctx = sigCanvasRef.current.getContext('2d')
+    ctx.beginPath()
+    const rect = sigCanvasRef.current.getBoundingClientRect()
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+  }
+
+  const draw = (e) => {
+    if (!isDrawing.current) return
+    const ctx = sigCanvasRef.current.getContext('2d')
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#1C1C1E'
+    ctx.shadowBlur = 1
+    ctx.shadowColor = '#1C1C1E'
+    const rect = sigCanvasRef.current.getBoundingClientRect()
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+  }
+
+  const stopDraw = () => { isDrawing.current = false }
+
+  const clearCanvas = () => {
+    const ctx = sigCanvasRef.current.getContext('2d')
+    ctx.clearRect(0, 0, sigCanvasRef.current.width, sigCanvasRef.current.height)
+}
 
   useEffect(() => {
     fetchDoc()
     fetchSignatures()
+    CURSIVE_FONTS.forEach(f => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = f.url
+      document.head.appendChild(link)
+    })
   }, [])
 
   const fetchDoc = async () => {
@@ -40,17 +90,46 @@ export default function SignDocument() {
     } catch (err) { console.error(err) }
   }
 
+  const handleConfirmSignature = () => {
+    let sigImage = null
+    try {
+        if (modalTab === 'draw') {
+            sigImage = sigCanvasRef.current.toDataURL('image/png')
+        } else {
+        if (!typedName.trim()) return alert('Please type your name first')
+        const canvas = document.createElement('canvas')
+        canvas.width = 400
+        canvas.height = 100
+        const ctx = canvas.getContext('2d')
+        ctx.clearRect(0, 0, 400, 100)
+        ctx.font = `48px ${selectedFont}`
+        ctx.fillStyle = '#1C1C1E'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(typedName, 200, 50)
+        sigImage = canvas.toDataURL('image/png')
+        }
+        setPendingSig(sigImage)
+        setShowModal(false)
+        setPlacing(true)
+    } catch (err) {
+        console.error(err)
+        alert('Something went wrong: ' + err.message)
+    }
+  }
+
   const handlePDFClick = async (e) => {
-    if (!placing) return
+    if (!placing || !pendingSig) return
     const rect = containerRef.current.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width) * 100
     const y = ((e.clientY - rect.top) / rect.height) * 100
     try {
       const res = await axios.post('http://localhost:5001/api/signatures', {
-        documentId: id, x, y, page: 1
+        documentId: id, x, y, page: 1, sigImage: pendingSig
       }, { headers: { Authorization: `Bearer ${token}` } })
-      setSignatures([...signatures, res.data])
+      setSignatures([...signatures, { ...res.data, sigImage: pendingSig }])
       setPlacing(false)
+      setPendingSig(null)
     } catch (err) { console.error(err) }
   }
 
@@ -72,26 +151,30 @@ export default function SignDocument() {
       </nav>
 
       <div style={{ maxWidth: '860px', margin: '0 auto', padding: '48px 24px' }}>
-        {/* Header */}
         <div style={{ marginBottom: '32px' }}>
           <div style={{ width: '36px', height: '3px', background: '#F5A65B', marginBottom: '16px', borderRadius: '2px' }} />
           <h2 style={{ fontSize: '1.4rem', fontWeight: '700', color: '#1C1C1E', marginBottom: '8px' }}>{doc.originalName}</h2>
-          <p style={{ color: '#aaa', fontSize: '0.9rem' }}>Click "Place Signature" then click anywhere on the document to sign</p>
+          <p style={{ color: '#aaa', fontSize: '0.9rem' }}>
+            {placing ? '👆 Click anywhere on the document to place your signature' : 'Create your signature then click where you want to place it'}
+          </p>
         </div>
 
         {/* Toolbar */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
           <button
-            onClick={() => setPlacing(!placing)}
-            style={{
-              background: placing ? '#1C1C1E' : '#F5A65B',
-              color: '#fff', border: 'none', borderRadius: '10px',
-              padding: '10px 24px', fontSize: '0.9rem', fontWeight: '700',
-              cursor: 'pointer', fontFamily: 'Georgia, serif'
-            }}
+            onClick={() => { setShowModal(true); setModalTab('draw') }}
+            style={{ background: '#F5A65B', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif' }}
           >
-            {placing ? '✕ Cancel' : '✍️ Place Signature'}
+            ✍️ Sign Document
           </button>
+          {placing && (
+            <button
+              onClick={() => { setPlacing(false); setPendingSig(null) }}
+              style={{ background: '#1C1C1E', color: '#aaa', border: '1.5px solid #444', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'Georgia, serif' }}
+            >
+              ✕ Cancel
+            </button>
+          )}
           {signatures.length > 0 && (
             <span style={{ display: 'flex', alignItems: 'center', color: '#4CAF7D', fontSize: '0.9rem', fontWeight: '600' }}>
               ✓ {signatures.length} signature{signatures.length > 1 ? 's' : ''} placed
@@ -104,11 +187,8 @@ export default function SignDocument() {
           ref={containerRef}
           onClick={handlePDFClick}
           style={{
-            position: 'relative',
-            background: '#fff',
-            borderRadius: '16px',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-            overflow: 'hidden',
+            position: 'relative', background: '#fff', borderRadius: '16px',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.08)', overflow: 'hidden',
             cursor: placing ? 'crosshair' : 'default',
             border: placing ? '2px dashed #F5A65B' : '2px solid transparent'
           }}
@@ -122,30 +202,90 @@ export default function SignDocument() {
             ))}
           </Document>
 
-          {/* Signature markers */}
           {signatures.map((sig, i) => (
-            <div
-              key={i}
-              style={{
-                position: 'absolute',
-                left: `${sig.x}%`,
-                top: `${sig.y}%`,
-                transform: 'translate(-50%, -50%)',
-                background: '#F5A65B',
-                color: '#fff',
-                padding: '4px 12px',
-                borderRadius: '6px',
-                fontSize: '0.8rem',
-                fontWeight: '700',
-                pointerEvents: 'none',
-                boxShadow: '0 2px 8px rgba(245,166,91,0.4)'
-              }}
-            >
-              ✍️ Signed
+            <div key={i} style={{
+              position: 'absolute', left: `${sig.x}%`, top: `${sig.y}%`,
+              transform: 'translate(-50%, -50%)', pointerEvents: 'none'
+            }}>
+              {sig.sigImage
+                ? <img src={sig.sigImage} style={{ height: '60px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }} />
+                : <span style={{ background: '#F5A65B', color: '#fff', padding: '4px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700' }}>✍️ Signed</span>
+              }
             </div>
           ))}
         </div>
       </div>
+
+      {/* Signature Modal */}
+      {showModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '40px', width: '520px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ width: '36px', height: '3px', background: '#F5A65B', marginBottom: '20px', borderRadius: '2px' }} />
+            <h3 style={{ fontSize: '1.3rem', fontWeight: '700', color: '#1C1C1E', marginBottom: '24px' }}>Create Your Signature</h3>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: '0', marginBottom: '24px', border: '1.5px solid #F0EDE9', borderRadius: '10px', overflow: 'hidden' }}>
+              {['draw', 'type'].map(tab => (
+                <button key={tab} onClick={() => setModalTab(tab)}
+                  style={{ flex: 1, padding: '10px', border: 'none', background: modalTab === tab ? '#1C1C1E' : '#fff', color: modalTab === tab ? '#F5A65B' : '#888', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '0.9rem', textTransform: 'capitalize' }}>
+                  {tab === 'draw' ? '✍️ Draw' : '⌨️ Type'}
+                </button>
+              ))}
+            </div>
+
+            {modalTab === 'draw' ? (
+              <div>
+                <div style={{ border: '1.5px solid #F0EDE9', borderRadius: '12px', overflow: 'hidden', marginBottom: '16px' }}>
+                    <canvas
+                        ref={sigCanvasRef}
+                        width={440}
+                        height={160}
+                        onMouseDown={startDraw}
+                        onMouseMove={draw}
+                        onMouseUp={stopDraw}
+                        onMouseLeave={stopDraw}
+                        style={{ display: 'block', background: '#F8F6F3', cursor: 'crosshair', width: '100%' }}
+                    />
+                    </div>
+                    <button onClick={clearCanvas}
+                    style={{ background: 'transparent', border: 'none', color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'Georgia, serif' }}>
+                    Clear
+                    </button>
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  placeholder="Type your full name"
+                  value={typedName}
+                  onChange={e => setTypedName(e.target.value)}
+                  style={{ width: '100%', border: '1.5px solid #F0EDE9', borderRadius: '10px', padding: '12px 14px', fontSize: '0.95rem', marginBottom: '16px', boxSizing: 'border-box', fontFamily: 'Georgia, serif', outline: 'none' }}
+                />
+                <p style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Choose style</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '8px' }}>
+                  {CURSIVE_FONTS.map(f => (
+                    <div key={f.name} onClick={() => setSelectedFont(f.name)}
+                      style={{ border: `1.5px solid ${selectedFont === f.name ? '#F5A65B' : '#F0EDE9'}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', background: selectedFont === f.name ? '#FEF3E8' : '#fff' }}>
+                      <span style={{ fontFamily: f.name, fontSize: '1.8rem', color: '#1C1C1E' }}>{typedName || 'Your Name'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <button onClick={() => setShowModal(false)}
+                style={{ flex: 1, background: '#F8F6F3', color: '#888', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif' }}>
+                Cancel
+              </button>
+              <button onClick={handleConfirmSignature}
+                style={{ flex: 2, background: '#F5A65B', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '1rem' }}>
+                Place Signature →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

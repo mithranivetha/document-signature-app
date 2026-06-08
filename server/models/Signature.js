@@ -6,6 +6,7 @@ const signatureSchema = new mongoose.Schema({
   x: { type: Number, required: true },
   y: { type: Number, required: true },
   page: { type: Number, default: 1 },
+  sigImage: { type: String },
   status: { type: String, enum: ['pending', 'signed', 'rejected'], default: 'pending' }
 }, { timestamps: true });
 
