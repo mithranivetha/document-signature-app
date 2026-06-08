@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
+import SignDocument from './pages/SignDocument'
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/sign/:id" element={<SignDocument />} />
           <Route path="/" element={<Login />} />
         </Routes>
       </BrowserRouter>

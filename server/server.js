@@ -21,6 +21,9 @@ app.use('/api/auth', authRoutes);
 const docRoutes = require('./routes/docs');
 app.use('/api/docs', docRoutes);
 
+const signatureRoutes = require('./routes/signatures');
+app.use('/api/signatures', signatureRoutes);
+
 app.get('/', (req, res) => res.send('Server is running!'));
 
 const PORT = process.env.PORT || 5000;

@@ -44,7 +44,6 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#F8F6F3', fontFamily: 'Georgia, serif' }}>
-      {/* Navbar */}
       <nav style={{ background: '#1C1C1E', padding: '0 48px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '32px', height: '3px', background: '#F5A65B', borderRadius: '2px' }} />
@@ -64,7 +63,6 @@ export default function Dashboard() {
       </nav>
 
       <div style={{ maxWidth: '860px', margin: '0 auto', padding: '48px 24px' }}>
-        {/* Upload Section */}
         <div style={{ background: '#fff', borderRadius: '16px', padding: '36px', marginBottom: '32px', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
           <div style={{ width: '36px', height: '3px', background: '#F5A65B', marginBottom: '20px', borderRadius: '2px' }} />
           <h2 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#1C1C1E', marginBottom: '20px' }}>Upload a Document</h2>
@@ -85,7 +83,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Documents List */}
         <div style={{ background: '#fff', borderRadius: '16px', padding: '36px', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
           <div style={{ width: '36px', height: '3px', background: '#F5A65B', marginBottom: '20px', borderRadius: '2px' }} />
           <h2 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#1C1C1E', marginBottom: '24px' }}>Your Documents</h2>
@@ -99,9 +96,17 @@ export default function Dashboard() {
                     <p style={{ fontWeight: '600', color: '#1C1C1E', marginBottom: '4px' }}>{doc.originalName}</p>
                     <p style={{ fontSize: '0.8rem', color: '#aaa' }}>{new Date(doc.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                   </div>
-                  <span style={{ ...statusStyle(doc.status), padding: '5px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700', textTransform: 'capitalize' }}>
-                    {doc.status}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ ...statusStyle(doc.status), padding: '5px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700', textTransform: 'capitalize' }}>
+                      {doc.status}
+                    </span>
+                    
+                      <a href={`/sign/${doc._id}`}
+                      style={{ background: '#1C1C1E', color: '#F5A65B', border: '1.5px solid #F5A65B', borderRadius: '8px', padding: '5px 14px', fontSize: '0.8rem', fontWeight: '700', textDecoration: 'none' }}
+                    >
+                      View & Sign
+                    </a>
+                  </div>
                 </div>
               ))}
             </div>
