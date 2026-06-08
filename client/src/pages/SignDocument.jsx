@@ -118,6 +118,22 @@ export default function SignDocument() {
     }
   }
 
+  const handleFinalize = async () => {
+  try {
+    const res = await axios.post(`http://localhost:5001/api/finalize/${id}`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const signedUrl = `http://localhost:5001/uploads/${res.data.signedFile}`
+    const link = document.createElement('a')
+    link.href = signedUrl
+    link.download = res.data.signedFile
+    link.click()
+    alert('Document finalized! Downloading now...')
+  } catch (err) {
+    alert('Finalize failed: ' + err.response?.data?.message)
+  }
+}
+
   const handlePDFClick = async (e) => {
     if (!placing || !pendingSig) return
     const rect = containerRef.current.getBoundingClientRect()
@@ -160,26 +176,34 @@ export default function SignDocument() {
         </div>
 
         {/* Toolbar */}
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
-          <button
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <button
             onClick={() => { setShowModal(true); setModalTab('draw') }}
             style={{ background: '#F5A65B', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif' }}
-          >
+        >
             ✍️ Sign Document
-          </button>
-          {placing && (
+        </button>
+        {placing && (
             <button
-              onClick={() => { setPlacing(false); setPendingSig(null) }}
-              style={{ background: '#1C1C1E', color: '#aaa', border: '1.5px solid #444', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'Georgia, serif' }}
+            onClick={() => { setPlacing(false); setPendingSig(null) }}
+            style={{ background: '#1C1C1E', color: '#aaa', border: '1.5px solid #444', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'Georgia, serif' }}
             >
-              ✕ Cancel
+            ✕ Cancel
             </button>
-          )}
-          {signatures.length > 0 && (
+        )}
+        {signatures.length > 0 && (
+            <>
             <span style={{ display: 'flex', alignItems: 'center', color: '#4CAF7D', fontSize: '0.9rem', fontWeight: '600' }}>
-              ✓ {signatures.length} signature{signatures.length > 1 ? 's' : ''} placed
+                ✓ {signatures.length} signature{signatures.length > 1 ? 's' : ''} placed
             </span>
-          )}
+            <button
+                onClick={handleFinalize}
+                style={{ background: '#1C1C1E', color: '#F5A65B', border: '1.5px solid #F5A65B', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif' }}
+            >
+                ✅ Finalize & Download
+            </button>
+            </>
+        )}
         </div>
 
         {/* PDF Viewer */}
