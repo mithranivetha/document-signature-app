@@ -5,7 +5,8 @@ const documentSchema = new mongoose.Schema({
   filename: { type: String, required: true },
   originalName: { type: String, required: true },
   filePath: { type: String, required: true },
-  status: { type: String, enum: ['pending', 'signed', 'rejected'], default: 'pending' }
+  status: { type: String, enum: ['pending', 'signed', 'rejected'], default: 'pending' },
+  shareToken: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Document', documentSchema);

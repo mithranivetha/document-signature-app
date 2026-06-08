@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faShare, faCopy } from '@fortawesome/free-solid-svg-icons'
 
 export default function Dashboard() {
   const { user, token, logout } = useAuth()
@@ -41,6 +43,18 @@ export default function Dashboard() {
     if (status === 'rejected') return { background: '#FDECEA', color: '#E57373' }
     return { background: '#FEF3E8', color: '#F5A65B' }
   }
+
+  const handleShare = async (docId) => {
+  try {
+    const res = await axios.post(`http://localhost:5001/api/share/${docId}`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    await navigator.clipboard.writeText(res.data.shareUrl)
+    alert('Share link copied to clipboard!')
+  } catch (err) {
+    alert('Failed to generate share link')
+  }
+}
 
   return (
     <div style={{ minHeight: '100vh', background: '#F8F6F3', fontFamily: 'Georgia, serif' }}>
@@ -106,6 +120,12 @@ export default function Dashboard() {
                     >
                       View & Sign
                     </a>
+                    <button
+                        onClick={() => handleShare(doc._id)}
+                        style={{ background: 'transparent', color: '#888', border: '1.5px solid #E8E4DF', borderRadius: '8px', padding: '5px 14px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                        <FontAwesomeIcon icon={faShare} /> Share
+                        </button>
                   </div>
                 </div>
               ))}

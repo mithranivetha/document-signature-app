@@ -27,6 +27,9 @@ app.use('/api/signatures', signatureRoutes);
 const finalizeRoutes = require('./routes/finalize');
 app.use('/api/finalize', finalizeRoutes);
 
+const shareRoutes = require('./routes/share');
+app.use('/api/share', shareRoutes);
+
 app.get('/', (req, res) => res.send('Server is running!'));
 
 const PORT = process.env.PORT || 5000;
