@@ -84,4 +84,46 @@ router.get('/audit/:docId', auth, async (req, res) => {
   }
 });
 
+// For shared signers (no auth required)
+router.post('/shared/:docId', async (req, res) => {
+  try {
+    const { shareToken } = req.body;
+    const doc = await Document.findOne({ _id: req.params.docId, shareToken });
+    if (!doc) return res.status(403).json({ message: 'Invalid share token' });
+
+    const signatures = await Signature.find({ document: doc._id });
+    if (signatures.length === 0) return res.status(400).json({ message: 'No signatures found' });
+
+    const pdfPath = path.join(__dirname, '..', doc.filePath);
+    const pdfBytes = fs.readFileSync(pdfPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pages = pdfDoc.getPages();
+
+    for (const sig of signatures) {
+      if (!sig.sigImage) continue;
+      const pageIndex = (sig.page || 1) - 1;
+      const page = pages[pageIndex];
+      const { width, height } = page.getSize();
+      const x = (sig.x / 100) * width
+      const y = height - (sig.y / 100) * height
+      const base64Data = sig.sigImage.replace(/^data:image\/png;base64,/, '')
+      const imgBytes = Buffer.from(base64Data, 'base64')
+      const img = await pdfDoc.embedPng(imgBytes)
+      page.drawImage(img, { x: x - 60, y: y - 30, width: 120, height: 40 })
+    }
+
+    const signedBytes = await pdfDoc.save();
+    const signedFilename = `signed-${doc.filename}`;
+    const signedPath = path.join(__dirname, '..', 'uploads', signedFilename);
+    fs.writeFileSync(signedPath, signedBytes);
+
+    doc.status = 'signed';
+    await doc.save();
+
+    res.json({ message: 'Document signed successfully', signedFile: signedFilename });
+  } catch (err) {
+    res.status(500).json({ message: 'Finalize failed', error: err.message });
+  }
+});
+
 module.exports = router;

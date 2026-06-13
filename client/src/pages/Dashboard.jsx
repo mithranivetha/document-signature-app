@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import axios from 'axios'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faShare, faCopy } from '@fortawesome/free-solid-svg-icons'
+import { faShare, faTrash } from '@fortawesome/free-solid-svg-icons'
+import axios from 'axios'
 
 export default function Dashboard() {
   const { user, token, logout } = useAuth()
@@ -36,6 +36,30 @@ export default function Dashboard() {
     setUploading(false)
   }
 
+  const handleShare = async (docId) => {
+    try {
+      const res = await axios.post(`http://localhost:5001/api/share/${docId}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      await navigator.clipboard.writeText(res.data.shareUrl)
+      alert('Share link copied to clipboard!')
+    } catch (err) {
+      alert('Failed to generate share link')
+    }
+  }
+
+  const handleDeleteDoc = async (docId) => {
+    if (!confirm('Delete this document permanently?')) return
+    try {
+      await axios.delete(`http://localhost:5001/api/docs/${docId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setDocs(docs.filter(d => d._id !== docId))
+    } catch (err) {
+      alert('Failed to delete document')
+    }
+  }
+
   if (!user) { window.location.href = '/login'; return null }
 
   const statusStyle = (status) => {
@@ -43,18 +67,6 @@ export default function Dashboard() {
     if (status === 'rejected') return { background: '#FDECEA', color: '#E57373' }
     return { background: '#FEF3E8', color: '#F5A65B' }
   }
-
-  const handleShare = async (docId) => {
-  try {
-    const res = await axios.post(`http://localhost:5001/api/share/${docId}`, {}, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    await navigator.clipboard.writeText(res.data.shareUrl)
-    alert('Share link copied to clipboard!')
-  } catch (err) {
-    alert('Failed to generate share link')
-  }
-}
 
   return (
     <div style={{ minHeight: '100vh', background: '#F8F6F3', fontFamily: 'Georgia, serif' }}>
@@ -81,12 +93,18 @@ export default function Dashboard() {
           <div style={{ width: '36px', height: '3px', background: '#F5A65B', marginBottom: '20px', borderRadius: '2px' }} />
           <h2 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#1C1C1E', marginBottom: '20px' }}>Upload a Document</h2>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={(e) => setFile(e.target.files[0])}
-              style={{ flex: 1, border: '1.5px dashed #E8E4DF', borderRadius: '10px', padding: '12px 14px', fontSize: '0.9rem', background: '#F8F6F3', fontFamily: 'Georgia, serif' }}
-            />
+            <div style={{ flex: 1, position: 'relative' }}>
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={(e) => setFile(e.target.files[0])}
+                id="fileInput"
+                style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+              />
+              <label htmlFor="fileInput" style={{ display: 'block', border: '1.5px dashed #E8E4DF', borderRadius: '10px', padding: '12px 14px', fontSize: '0.9rem', background: '#F8F6F3', fontFamily: 'Georgia, serif', cursor: 'pointer', color: file ? '#1C1C1E' : '#aaa' }}>
+                {file ? file.name : 'Choose a PDF file'}
+              </label>
+            </div>
             <button
               onClick={handleUpload}
               disabled={uploading}
@@ -105,7 +123,7 @@ export default function Dashboard() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {docs.map(doc => (
-                <div key={doc._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1.5px solid #F0EDE9', borderRadius: '12px', padding: '16px 20px' }}>
+                <div key={doc._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1.5px solid #F0EDE9', borderRadius: '12px', padding: '16px 20px', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
                     <p style={{ fontWeight: '600', color: '#1C1C1E', marginBottom: '4px' }}>{doc.originalName}</p>
                     <p style={{ fontSize: '0.8rem', color: '#aaa' }}>{new Date(doc.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
@@ -115,17 +133,23 @@ export default function Dashboard() {
                       {doc.status}
                     </span>
                     
-                      <a href={`/sign/${doc._id}`}
+                    <a  href={`/sign/${doc._id}`}
                       style={{ background: '#1C1C1E', color: '#F5A65B', border: '1.5px solid #F5A65B', borderRadius: '8px', padding: '5px 14px', fontSize: '0.8rem', fontWeight: '700', textDecoration: 'none' }}
                     >
                       View & Sign
                     </a>
                     <button
-                        onClick={() => handleShare(doc._id)}
-                        style={{ background: 'transparent', color: '#888', border: '1.5px solid #E8E4DF', borderRadius: '8px', padding: '5px 14px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        >
-                        <FontAwesomeIcon icon={faShare} /> Share
-                        </button>
+                      onClick={() => handleShare(doc._id)}
+                      style={{ background: 'transparent', color: '#888', border: '1.5px solid #E8E4DF', borderRadius: '8px', padding: '5px 14px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <FontAwesomeIcon icon={faShare} /> Share
+                    </button>
+                    <button
+                      onClick={() => handleDeleteDoc(doc._id)}
+                      style={{ background: 'transparent', color: '#E57373', border: '1.5px solid #FBE0DE', borderRadius: '8px', padding: '5px 14px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <FontAwesomeIcon icon={faTrash} />
+                    </button>
                   </div>
                 </div>
               ))}

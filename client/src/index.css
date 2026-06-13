@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+.pdf-document canvas {
+  pointer-events: none;
+}

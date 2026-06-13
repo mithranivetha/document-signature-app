@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { Document, Page, pdfjs } from 'react-pdf'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faPen, faCheck, faXmark, faArrowLeft } from '@fortawesome/free-solid-svg-icons'
+import { faPen, faCheck, faXmark, faDownload, faTrash } from '@fortawesome/free-solid-svg-icons'
+import { SESSION_ID } from '../context/AuthContext'
 import axios from 'axios'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
@@ -26,7 +27,10 @@ export default function SharedSign() {
   const [selectedFont, setSelectedFont] = useState('Dancing Script')
   const [placing, setPlacing] = useState(false)
   const [pendingSig, setPendingSig] = useState(null)
-  const [signed, setSigned] = useState(false)
+  const [hoveredSig, setHoveredSig] = useState(null)
+  const [draggingSig, setDraggingSig] = useState(null)
+  const [finalized, setFinalized] = useState(false)
+  const [signedFileUrl, setSignedFileUrl] = useState(null)
   const containerRef = useRef(null)
   const sigCanvasRef = useRef(null)
   const isDrawing = useRef(false)
@@ -45,6 +49,8 @@ export default function SharedSign() {
     try {
       const res = await axios.get(`http://localhost:5001/api/share/${token}`)
       setDoc(res.data)
+      const sigRes = await axios.get(`http://localhost:5001/api/signatures/shared/${res.data._id}`)
+      setSignatures(sigRes.data)
     } catch (err) { console.error(err) }
   }
 
@@ -106,15 +112,74 @@ export default function SharedSign() {
     }
   }
 
+  const handleDeleteSignature = async (sigId, e) => {
+    e.stopPropagation()
+    try {
+      await axios.delete(`http://localhost:5001/api/signatures/${sigId}`)
+      setSignatures(signatures.filter(s => s._id !== sigId))
+    } catch (err) {
+      alert('Failed to delete signature')
+    }
+  }
+
+  const handleLockSignature = async (sigId, e) => {
+    e.stopPropagation()
+    try {
+      await axios.patch(`http://localhost:5001/api/signatures/${sigId}`, { locked: true })
+      setSignatures(signatures.map(s => s._id === sigId ? { ...s, locked: true } : s))
+      const res = await axios.post(`http://localhost:5001/api/finalize/shared/${doc._id}`, { shareToken: token })
+      setSignedFileUrl(`http://localhost:5001/uploads/${res.data.signedFile}`)
+    } catch (err) { console.error(err) }
+  }
+
   const handlePDFClick = async (e) => {
     if (!placing || !pendingSig) return
     const rect = containerRef.current.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width) * 100
     const y = ((e.clientY - rect.top) / rect.height) * 100
-    setSignatures([...signatures, { x, y, sigImage: pendingSig }])
-    setPlacing(false)
-    setPendingSig(null)
-    setSigned(true)
+
+    try {
+      const sigRes = await axios.post('http://localhost:5001/api/signatures/shared', {
+        documentId: doc._id, x, y, page: 1, sigImage: pendingSig, shareToken: token, sessionId: SESSION_ID
+      })
+      setSignatures([...signatures, { ...sigRes.data, sigImage: pendingSig }])
+      setPlacing(false)
+      setPendingSig(null)
+
+      const res = await axios.post(`http://localhost:5001/api/finalize/shared/${doc._id}`, {
+        shareToken: token
+      })
+      setSignedFileUrl(`http://localhost:5001/uploads/${res.data.signedFile}`)
+      setFinalized(true)
+    } catch (err) {
+      console.error(err)
+      alert('Failed to save signature')
+    }
+  }
+
+  const handleSigMouseDown = (sig, e) => {
+    if (sig.sessionId !== SESSION_ID || sig.locked) return
+    e.stopPropagation()
+    setDraggingSig(sig._id)
+  }
+
+  const handleContainerMouseMove = (e) => {
+    if (!draggingSig) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 100
+    const y = ((e.clientY - rect.top) / rect.height) * 100
+    setSignatures(signatures.map(s => s._id === draggingSig ? { ...s, x, y } : s))
+  }
+
+  const handleContainerMouseUp = async () => {
+    if (!draggingSig) return
+    const sig = signatures.find(s => s._id === draggingSig)
+    setDraggingSig(null)
+    try {
+      await axios.patch(`http://localhost:5001/api/signatures/${sig._id}`, { x: sig.x, y: sig.y })
+      const res = await axios.post(`http://localhost:5001/api/finalize/shared/${doc._id}`, { shareToken: token })
+      setSignedFileUrl(`http://localhost:5001/uploads/${res.data.signedFile}`)
+    } catch (err) { console.error(err) }
   }
 
   if (!doc) return (
@@ -138,36 +203,53 @@ export default function SharedSign() {
           <div style={{ width: '36px', height: '3px', background: '#F5A65B', marginBottom: '16px', borderRadius: '2px' }} />
           <h2 style={{ fontSize: '1.4rem', fontWeight: '700', color: '#1C1C1E', marginBottom: '8px' }}>{doc.originalName}</h2>
           <p style={{ color: '#aaa', fontSize: '0.9rem' }}>
-            {placing ? 'Click anywhere on the document to place your signature' : 'Review and sign the document below'}
+            {placing
+              ? 'Click anywhere on the document to place your signature'
+              : finalized
+                ? 'You can drag your signature to reposition it, then click the green check to lock it in place'
+                : 'Review and sign the document below'}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          {!signed ? (
-            <button
-              onClick={() => { setShowModal(true); setModalTab('draw') }}
-              style={{ background: '#F5A65B', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <FontAwesomeIcon icon={faPen} /> Sign Document
-            </button>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {!finalized ? (
+            <>
+              <button
+                onClick={() => { setShowModal(true); setModalTab('draw') }}
+                style={{ background: '#F5A65B', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <FontAwesomeIcon icon={faPen} /> Sign Document
+              </button>
+              {placing && (
+                <button
+                  onClick={() => { setPlacing(false); setPendingSig(null) }}
+                  style={{ background: '#1C1C1E', color: '#aaa', border: '1.5px solid #444', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <FontAwesomeIcon icon={faXmark} /> Cancel
+                </button>
+              )}
+            </>
           ) : (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4CAF7D', fontSize: '0.9rem', fontWeight: '600' }}>
-              <FontAwesomeIcon icon={faCheck} /> Document Signed
-            </span>
-          )}
-          {placing && (
-            <button
-              onClick={() => { setPlacing(false); setPendingSig(null) }}
-              style={{ background: '#1C1C1E', color: '#aaa', border: '1.5px solid #444', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <FontAwesomeIcon icon={faXmark} /> Cancel
-            </button>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4CAF7D', fontSize: '0.9rem', fontWeight: '600' }}>
+                <FontAwesomeIcon icon={faCheck} /> Document signed successfully
+              </span>
+              
+              <a  href={signedFileUrl}
+                download
+                style={{ background: '#1C1C1E', color: '#F5A65B', border: '1.5px solid #F5A65B', borderRadius: '10px', padding: '10px 24px', fontSize: '0.9rem', fontWeight: '700', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <FontAwesomeIcon icon={faDownload} /> Download Signed PDF
+              </a>
+            </div>
           )}
         </div>
 
         <div
           ref={containerRef}
           onClick={handlePDFClick}
+          onMouseMove={handleContainerMouseMove}
+          onMouseUp={handleContainerMouseUp}
           style={{
             position: 'relative', background: '#fff', borderRadius: '16px',
             boxShadow: '0 4px 24px rgba(0,0,0,0.08)', overflow: 'hidden',
@@ -178,16 +260,66 @@ export default function SharedSign() {
           <Document
             file={`http://localhost:5001/uploads/${doc.filename}`}
             onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+            className="pdf-document"
           >
             {Array.from(new Array(numPages), (_, i) => (
               <Page key={i + 1} pageNumber={i + 1} width={812} />
             ))}
           </Document>
-          {signatures.map((sig, i) => (
-            <div key={i} style={{ position: 'absolute', left: `${sig.x}%`, top: `${sig.y}%`, transform: 'translate(-50%, -50%)', pointerEvents: 'none' }}>
-              <img src={sig.sigImage} style={{ height: '60px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }} />
-            </div>
-          ))}
+          {signatures.map((sig, i) => {
+            const isMine = sig.sessionId === SESSION_ID
+            const showControls = hoveredSig === sig._id && isMine && !sig.locked
+            return (
+              <div
+                key={sig._id || i}
+                onMouseEnter={() => setHoveredSig(sig._id)}
+                onMouseLeave={() => setHoveredSig(null)}
+                onMouseDown={(e) => handleSigMouseDown(sig, e)}
+                style={{
+                  position: 'absolute', left: `${sig.x}%`, top: `${sig.y}%`,
+                  transform: 'translate(-50%, -50%)', zIndex: 10,
+                  cursor: isMine && !sig.locked ? 'grab' : 'default'
+                }}
+              >
+                <img
+                  src={sig.sigImage}
+                  style={{ height: '60px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))', display: 'block', pointerEvents: 'none' }}
+                />
+
+                {showControls && (
+                  <>
+                    <button
+                      onClick={(e) => handleLockSignature(sig._id, e)}
+                      title="Lock signature in place"
+                      style={{
+                        position: 'absolute', top: '-10px', left: '-10px',
+                        background: '#4CAF7D', color: '#fff', border: 'none',
+                        borderRadius: '50%', width: '22px', height: '22px',
+                        fontSize: '0.7rem', cursor: 'pointer', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', zIndex: 11
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faCheck} />
+                    </button>
+
+                    <button
+                      onClick={(e) => handleDeleteSignature(sig._id, e)}
+                      title="Delete signature"
+                      style={{
+                        position: 'absolute', top: '-10px', right: '-10px',
+                        background: '#E57373', color: '#fff', border: 'none',
+                        borderRadius: '50%', width: '22px', height: '22px',
+                        fontSize: '0.7rem', cursor: 'pointer', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', zIndex: 11
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faTrash} />
+                    </button>
+                  </>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
